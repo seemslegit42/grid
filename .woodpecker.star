@@ -375,30 +375,31 @@ config = {
         "1": {
             "skip": False,
             "suites": [
-                "journeys",
-                "smoke",
+                "journeys/",
+                "smoke/",
             ],
         },
         "2": {
             "skip": False,
             "suites": [
-                "admin-settings",
-                "spaces",
+                "admin-settings/",
+                "spaces/",
+                "rclone-crypt/",
             ],
         },
         "3": {
             "skip": False,
             "suites": [
-                "shares",
-                "search",
+                "shares/",
+                "search/",
             ],
             "tikaNeeded": True,
         },
         "4": {
             "skip": False,
             "suites": [
-                "user-settings",
-                #"fileaction",
+                "user-settings/",
+                "fileaction/",
                 "embed",
             ],
         },
@@ -407,12 +408,12 @@ config = {
         "testSuites": {
             "skip": False,
             "suites": [
-                "smoke",
-                "shares",
-                "search",
-                "journeys",
-                #"file-action",
-                "spaces",
+                "smoke/",
+                "shares/",
+                "search/",
+                "journeys/",
+                "file-action/",
+                "spaces/",
             ],
             "tikaNeeded": True,
         },
@@ -1546,13 +1547,15 @@ def e2eTestPipeline(ctx):
         if "[decomposed]" in ctx.build.title.lower():
             params["storages"] = ["decomposed"]
 
-        e2e_args = "--suites %s" % ",".join(params["suites"]) if params["suites"] else ""
+        e2e_args = " ".join(params["suites"]) if params["suites"] else ""
 
         if "with-tracing" in ctx.build.title.lower():
             params["reportTracing"] = True
 
         for storage in params["storages"]:
             for watch_fs_enabled in params["enableWatchFs"]:
+                pipeline_name = "test-e2e-%s-%s%s" % (name, storage, "-watchfs" if watch_fs_enabled else "")
+
                 steps = \
                     skipCheckStep(ctx, "e2e-tests") + \
                     evaluateWorkflowStep() + \
@@ -1572,24 +1575,23 @@ def e2eTestPipeline(ctx):
                         "image": OC_CI_NODEJS,
                         "environment": {
                             "OC_BASE_URL": OC_DOMAIN,
-                            "HEADLESS": True,
                             "RETRY": "1",
                             "WEB_UI_CONFIG_FILE": "%s/%s" % (dirs["base"], dirs["opencloudConfig"]),
                             "LOCAL_UPLOAD_DIR": "/uploads",
                             "PLAYWRIGHT_BROWSERS_PATH": "%s/%s" % (dirs["base"], ".playwright"),
-                            "BROWSER": "chromium",
-                            "REPORT_TRACING": params["reportTracing"],
                             "SLOW_MO": "300",
                         },
                         "commands": [
                             "cd %s/tests/e2e" % dirs["web"],
-                            "bash run-e2e.sh %s" % e2e_args,
+                            "pnpm playwright install chromium",
+                            "pnpm bddgen",
+                            "pnpm playwright test %s --project=chromium" % e2e_args,
                         ],
                     }] + \
-                    uploadTracingResult(ctx)
+                    uploadTestArtifacts(pipeline_name)
 
                 pipeline = {
-                    "name": "test-e2e-%s-%s%s" % (name, storage, "-watchfs" if watch_fs_enabled else ""),
+                    "name": pipeline_name,
                     "steps": steps,
                     "depends_on": getPipelineNames(buildOpencloudBinaryForTesting(ctx) + buildWebCache(ctx)),
                     "when": e2e_trigger,
@@ -1608,7 +1610,6 @@ def multiServiceE2ePipeline(ctx):
     defaults = {
         "skip": False,
         "suites": [],
-        "xsuites": [],
         "tikaNeeded": False,
         "reportTracing": False,
         "enableWatchFs": [False],
@@ -1692,13 +1693,7 @@ def multiServiceE2ePipeline(ctx):
         if "[decomposed]" in ctx.build.title.lower():
             params["storages"] = ["decomposed"]
 
-        e2e_args = ""
-        if params["suites"]:
-            e2e_args = "--suites %s" % ",".join(params["suites"])
-
-        # suites to skip
-        if params["xsuites"]:
-            e2e_args += " --xsuites %s" % ",".join(params["xsuites"])
+        e2e_args = " ".join(params["suites"]) if params["suites"] else ""
 
         if "with-tracing" in ctx.build.title.lower():
             params["reportTracing"] = True
@@ -1707,6 +1702,8 @@ def multiServiceE2ePipeline(ctx):
             for watch_fs_enabled in params["enableWatchFs"]:
                 if watch_fs_enabled:
                     extra_server_environment["STORAGE_USERS_POSIX_WATCH_FS"] = True
+
+                pipeline_name = "test-e2e-multi-service%s" % ("-watchfs" if watch_fs_enabled else "")
 
                 steps = \
                     skipCheckStep(ctx, "e2e-tests") + \
@@ -1723,21 +1720,20 @@ def multiServiceE2ePipeline(ctx):
                         "image": OC_CI_NODEJS,
                         "environment": {
                             "OC_BASE_URL": OC_DOMAIN,
-                            "HEADLESS": True,
                             "RETRY": "1",
-                            "REPORT_TRACING": params["reportTracing"],
                             "PLAYWRIGHT_BROWSERS_PATH": "%s/%s" % (dirs["base"], ".playwright"),
-                            "BROWSER": "chromium",
                         },
                         "commands": [
                             "cd %s/tests/e2e" % dirs["web"],
-                            "bash run-e2e.sh %s" % e2e_args,
+                            "pnpm playwright install chromium",
+                            "pnpm bddgen",
+                            "pnpm playwright test %s --project=chromium" % e2e_args,
                         ],
                     }] + \
-                    uploadTracingResult(ctx)
+                    uploadTestArtifacts(pipeline_name)
 
                 pipeline = {
-                    "name": "test-e2e-multi-service%s" % ("-watchfs" if watch_fs_enabled else ""),
+                    "name": pipeline_name,
                     "steps": steps,
                     "depends_on": getPipelineNames(buildOpencloudBinaryForTesting(ctx) + buildWebCache(ctx)),
                     "when": e2e_trigger,
@@ -1749,24 +1745,20 @@ def multiServiceE2ePipeline(ctx):
                 pipelines.append(pipeline)
     return pipelines
 
-def uploadTracingResult(ctx):
-    status = ["failure"]
-    if "with-tracing" in ctx.build.title.lower():
-        status = ["failure", "success"]
-
+def uploadTestArtifacts(pipeline_name):
     return [{
-        "name": "upload-tracing-result",
+        "name": "upload-test-artifacts",
         "image": MINIO_MC,
         "environment": MINIO_MC_ENV,
         "commands": [
+            "microdnf install -y zip",
             "mc alias set s3 $MC_HOST $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY",
-            "mc cp -a %s/reports/e2e/playwright/tracing/* s3/$PUBLIC_BUCKET/web/tracing/$CI_REPO_NAME/$CI_PIPELINE_NUMBER/" % dirs["web"],
-            "cd %s/reports/e2e/playwright/tracing/" % dirs["web"],
-            'echo "To see the trace, please open the following link in the console"',
-            'for f in *.zip; do echo "npx playwright show-trace $MC_HOST/$PUBLIC_BUCKET/web/tracing/$CI_REPO_NAME/$CI_PIPELINE_NUMBER/$f \n"; done',
+            "cd %s/tests/e2e/playwright-report && zip -r /tmp/playwright-report.zip ." % dirs["web"],
+            "mc cp /tmp/playwright-report.zip s3/$PUBLIC_BUCKET/web/artifacts/$CI_REPO_NAME/$CI_PIPELINE_NUMBER/%s/playwright-report.zip" % pipeline_name,
+            'printf "=== HTML Report ===\ncurl -O $MC_HOST/$PUBLIC_BUCKET/web/artifacts/$CI_REPO_NAME/$CI_PIPELINE_NUMBER/%s/playwright-report.zip && npx playwright show-report playwright-report.zip\n"' % pipeline_name,
         ],
         "when": {
-            "status": status,
+            "status": ["failure", "success"],
         },
     }]
 
