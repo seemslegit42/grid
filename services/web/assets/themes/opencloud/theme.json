@@ -102,18 +102,6 @@
               "surfaceContainer": "#f6f8fa",
               "surfaceContainerHigh": "#f2f4f5",
               "surfaceContainerHighest": "#eceef0"
-            },
-            "colorPalette": {
-              "icon-archive": "#fbbe54",
-              "icon-audio": "#700460",
-              "icon-document": "#3b44a6",
-              "icon-folder": "#4d7eaf",
-              "icon-image": "#ee6b3b",
-              "icon-medical": "#0984db",
-              "icon-pdf": "#ec0d47",
-              "icon-presentation": "#ee6b3b",
-              "icon-spreadsheet": "#15c286",
-              "icon-video": "#045459"
             }
           }
         },
